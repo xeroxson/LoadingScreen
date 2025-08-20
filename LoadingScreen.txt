@@ -1,43 +1,153 @@
+
+--// Services
 local Players = game:GetService("Players")
-local ReplicatedFirst = game:GetService("ReplicatedFirst")
 local TweenService = game:GetService("TweenService")
 
-local player = Players.LocalPlayer
-local playerGui = player:WaitForChild("PlayerGui")
+--// Constants (mirrors dump values)
+local GUI_NAME = "GrowaLoadingUI"
+local COLOR_BG = Color3.new(0, 0, 0)
+local COLOR_ICON_OUTER = Color3.fromRGB(0, 100, 0)
+local COLOR_ICON_INNER = Color3.fromRGB(0, 255, 0)
+local COLOR_TEXT_PRIMARY = Color3.fromRGB(0, 255, 0)
+local COLOR_TEXT_SUB = Color3.fromRGB(180, 180, 180)
+local COLOR_BAR_BG = Color3.fromRGB(50, 50, 50)
+local COLOR_BAR_FILL = Color3.fromRGB(124, 255, 100)
 
-local screenGui = Instance.new("ScreenGui")
-screenGui.IgnoreGuiInset = true
-screenGui.Parent = playerGui
+local LOCAL_PLAYER = Players.LocalPlayer
+local PLAYER_GUI = LOCAL_PLAYER:WaitForChild("PlayerGui")
 
-local textLabel = Instance.new("TextLabel")
-textLabel.Size = UDim2.new(1, 0, 1, 0)
-textLabel.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-textLabel.Font = Enum.Font.GothamMedium
-textLabel.TextColor3 = Color3.new(255, 255, 255)
-textLabel.Text = "Loading..."
-textLabel.TextSize = 28
-textLabel.Parent = screenGui
+-- Progress behavior identical to dump: Tween 3s, then wait 3s, per 1%
+local TOTAL_STEPS = 100
+local STEP_TWEEN_TIME = 1
+local STEP_WAIT_TIME = 1
 
-local loadingRing = Instance.new("ImageLabel")
-loadingRing.Size = UDim2.new(0, 256, 0, 256)
-loadingRing.BackgroundTransparency = 1
-loadingRing.Image = "rbxassetid://4965945816"
-loadingRing.AnchorPoint = Vector2.new(0.5, 0.5)
-loadingRing.Position = UDim2.new(0.5, 0, 0.5, 0)
-loadingRing.Parent = screenGui
-
--- Remove the default loading screen
-ReplicatedFirst:RemoveDefaultLoadingScreen()
-
-local tweenInfo = TweenInfo.new(4, Enum.EasingStyle.Linear, Enum.EasingDirection.In, -1)
-local tween = TweenService:Create(loadingRing, tweenInfo, {Rotation = 360})
-tween:Play()
-
-task.wait(200) 
-
-if not game:IsLoaded() then
- game.Loaded:Wait()
+--// Utility
+local function destroyExisting()
+	local existing = PLAYER_GUI:FindFirstChild(GUI_NAME)
+	if existing then existing:Destroy() end
 end
 
+--// Build UI exactly like the dump
+local function buildUI()
+	destroyExisting()
 
-screenGui:Destroy()
+	local sg = Instance.new("ScreenGui")
+	sg.Name = GUI_NAME
+	sg.ResetOnSpawn = false
+	sg.IgnoreGuiInset = true
+	sg.Parent = PLAYER_GUI
+
+	local root = Instance.new("Frame")
+	root.Size = UDim2.new(1, 0, 1, 0)
+	root.Position = UDim2.new()
+	root.BackgroundColor3 = COLOR_BG
+	root.BorderSizePixel = 0
+	root.Parent = sg
+
+	-- Square icon (outer + inner)
+	local iconOuter = Instance.new("Frame")
+	iconOuter.Size = UDim2.new(0, 60, 0, 60)
+	iconOuter.Position = UDim2.new(0.5, -30, 0.3, 0)
+	iconOuter.BackgroundColor3 = COLOR_ICON_OUTER
+	iconOuter.BorderSizePixel = 0
+	iconOuter.Parent = root
+
+	local iconInner = Instance.new("Frame")
+	iconInner.Size = UDim2.new(0.6, 0, 0.6, 0)
+	iconInner.Position = UDim2.new(0.2, 0, 0.2, 0)
+	iconInner.BackgroundColor3 = COLOR_ICON_INNER
+	iconInner.BorderSizePixel = 0
+	iconInner.Parent = iconOuter
+
+	-- "GROWA"
+	local lblGrowa = Instance.new("TextLabel")
+	lblGrowa.Text = "GROWA"
+	lblGrowa.Font = Enum.Font.SourceSansBold
+	lblGrowa.TextSize = 25
+	lblGrowa.TextColor3 = COLOR_TEXT_PRIMARY
+	lblGrowa.BackgroundTransparency = 1
+	lblGrowa.Position = UDim2.new(0.5, -70, 0.45, 0)
+	lblGrowa.Size = UDim2.new(0, 140, 0, 40)
+	lblGrowa.Parent = root
+
+	-- "GARDEN"
+	local lblGarden = Instance.new("TextLabel")
+	lblGarden.Text = "GARDEN"
+	lblGarden.Font = Enum.Font.SourceSans
+	lblGarden.TextSize = 15
+	lblGarden.TextColor3 = COLOR_TEXT_PRIMARY
+	lblGarden.BackgroundTransparency = 1
+	lblGarden.Position = UDim2.new(0.5, -50, 0.5, 0)
+	lblGarden.Size = UDim2.new(0, 100, 0, 30)
+	lblGarden.Parent = root
+
+	-- "Please wait few minutes..."
+	local lblInfo = Instance.new("TextLabel")
+	lblInfo.Text = "Please wait few minutes..."
+	lblInfo.Font = Enum.Font.SourceSans
+	lblInfo.TextSize = 18
+	lblInfo.TextColor3 = COLOR_TEXT_SUB
+	lblInfo.BackgroundTransparency = 1
+	lblInfo.Position = UDim2.new(0.5, -100, 0.58, 0)
+	lblInfo.Size = UDim2.new(0, 200, 0, 20)
+	lblInfo.Parent = root
+
+	-- Percent label (starts at 0%)
+	local lblPercent = Instance.new("TextLabel")
+	lblPercent.Text = "0%"
+	lblPercent.Font = Enum.Font.SourceSansBold
+	lblPercent.TextSize = 20
+	lblPercent.TextColor3 = COLOR_TEXT_PRIMARY
+	lblPercent.BackgroundTransparency = 1
+	lblPercent.Position = UDim2.new(0.5, -20, 0.62, 0)
+	lblPercent.Size = UDim2.new(0, 40, 0, 20)
+	lblPercent.Parent = root
+
+	-- Progress bar (background)
+	local barBG = Instance.new("Frame")
+	barBG.Size = UDim2.new(0.6, 0, 0, 12)
+	barBG.Position = UDim2.new(0.2, 0, 0.68, 0)
+	barBG.BackgroundColor3 = COLOR_BAR_BG
+	barBG.BorderSizePixel = 0
+	barBG.Parent = root
+
+	local barBGCorner = Instance.new("UICorner")
+	barBGCorner.CornerRadius = UDim.new(0, 6)
+	barBGCorner.Parent = barBG
+
+	-- Progress bar (fill)
+	local barFill = Instance.new("Frame")
+	barFill.Size = UDim2.new(0, 0, 1, 0)
+	barFill.Position = UDim2.new()
+	barFill.BackgroundColor3 = COLOR_BAR_FILL
+	barFill.BorderSizePixel = 0
+	barFill.Parent = barBG
+
+	local barFillCorner = Instance.new("UICorner")
+	barFillCorner.CornerRadius = UDim.new(0, 6)
+	barFillCorner.Parent = barFill
+
+	return sg, lblPercent, barFill
+end
+
+local function tweenFillToX(barFill: Frame, alpha: number)
+	alpha = math.clamp(alpha, 0, 1)
+	local tween = TweenService:Create(
+		barFill,
+		TweenInfo.new(STEP_TWEEN_TIME, Enum.EasingStyle.Linear, Enum.EasingDirection.Out),
+		{ Size = UDim2.new(alpha, 0, 1, 0) }
+	)
+	tween:Play()
+	tween.Completed:Wait()
+end
+
+--// Main (replicates the dump’s sequence and pacing exactly)
+task.spawn(function()
+	local _, lblPercent, barFill = buildUI()
+
+	for i = 1, TOTAL_STEPS do
+		lblPercent.Text = tostring(i) .. "%"
+		tweenFillToX(barFill, i / TOTAL_STEPS)
+		task.wait(STEP_WAIT_TIME)
+	end
+end)
